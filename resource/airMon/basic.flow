@@ -1,9 +1,0 @@
----
-config:
-  failure.emails: <your email>@gmail.com
-
-nodes:
-  - name: jobA
-    type: command
-    config:
-      command: sh ./airMon.sh
