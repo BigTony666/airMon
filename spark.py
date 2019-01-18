@@ -1,6 +1,8 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
 from pyspark.sql.functions import udf
+import os
+import sys
 
 if __name__ == '__main__':
     spark = SparkSession.builder.appName("airMon").getOrCreate()
@@ -10,9 +12,9 @@ if __name__ == '__main__':
         .read\
         .format("csv")\
         .options(header="true", inferSchema="true")\
-        .load("./data/Beijing_2017_HourlyPM25_created20170803.csv")
+        .load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "data/Beijing_2017_HourlyPM25_created20170803.csv"))
 
-    def get_AQI_Level(value):
+    def get_AQI_level(value):
         """calculate AQI
 
         :param value:
@@ -36,7 +38,7 @@ if __name__ == '__main__':
             return None
 
     # Write an UDF for withColumn
-    get_AQI_udf = udf(get_AQI_Level, StringType())
+    get_AQI_udf = udf(get_AQI_level, StringType())
 
     group2017 = data2017\
         .select("Year", "Month", "Day", "Hour", "Value", "QC Name")\
@@ -44,10 +46,16 @@ if __name__ == '__main__':
         .groupBy("AQI_LEVEL")\
         .count()
 
-    group2017 \
-        .select("AQI_LEVEL", "count", group2017['count'] / data2017.count()) \
-        .show()
+    result2017 = group2017\
+        .select("AQI_LEVEL", "count")\
+        .withColumn("percent", group2017['count'] / data2017.count() * 100)\
+        .selectExpr("AQI_LEVEL as aqi_level", "count", "percent")
 
-    data2017.printSchema()
+    result2017\
+        .write\
+        .format("org.elasticsearch.spark.sql")\
+        .option("es.nodes", "127.0.0.1:9200")\
+        .mode("overwrite")\
+        .save("weather2017/pm")
 
     spark.stop()
